@@ -1,0 +1,6 @@
+{
+  "name": "Hey Barkie Dog Translator",
+  "description": "An accurate dog-to-human audio translator that filters background noise and human speech, matches canine acoustic frequency profiles, and translates it accurately to English or Filipino.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
