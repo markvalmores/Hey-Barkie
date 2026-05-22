@@ -66,7 +66,20 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error('Canine server communication glitch');
+        let serverErrorMessage = 'Canine server communication glitch';
+        try {
+          const errPayload = await response.json();
+          if (errPayload && errPayload.error) {
+            serverErrorMessage = errPayload.error;
+          }
+        } catch (parseErr) {
+          // Fallback to text if JSON parsing fails
+          try {
+            const txt = await response.text();
+            if (txt) serverErrorMessage = txt.substring(0, 100);
+          } catch (_) {}
+        }
+        throw new Error(serverErrorMessage);
       }
 
       const rawData: TranslationResponse = await response.json();
@@ -84,7 +97,8 @@ export default function App() {
       saveHistory([newHistoryItem, ...historyList]);
     } catch (err: any) {
       console.error('Core translate routine hit a boundary:', err);
-      setGlobalError('Unable to synthesize translations. Verify network link is viable.');
+      const detailedMessage = err instanceof Error ? err.message : String(err);
+      setGlobalError(`Unable to synthesize translations. (${detailedMessage}). Verify network link is viable.`);
     } finally {
       setIsTranslating(false);
     }

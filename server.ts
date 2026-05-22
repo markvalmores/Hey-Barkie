@@ -217,7 +217,7 @@ app.post('/api/translate', async (req, res) => {
     }
   } catch (err: any) {
     console.error('Translational handler failure:', err);
-    res.status(500).json({ error: 'Failed to accurately parse bark vibration frequencies.' });
+    res.status(500).json({ error: `Failed to accurately parse bark vibration frequencies: ${err?.message || err}` });
   }
 });
 
