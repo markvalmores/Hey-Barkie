@@ -40,10 +40,27 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
   const pulseCounterRef = useRef(0);
   const pulseTimerRef = useRef<number | null>(null);
 
+  // Session accumulation statistics for stopping the mic to translate
+  const sessionMaxFrequencyRef = useRef<number>(0);
+  const sessionSumFrequencyRef = useRef<number>(0);
+  const sessionFrequencyCountRef = useRef<number>(0);
+  const sessionMaxDbRef = useRef<number>(0);
+  const sessionPulseCountRef = useRef<number>(0);
+  const sessionDurationRef = useRef<number>(0);
+  const sessionTypeTallyRef = useRef<Record<VocalizationType, number>>({
+    bark: 0,
+    growl: 0,
+    whine: 0,
+    whimer: 0, // Fallback safely
+    whimper: 0,
+    howl: 0,
+    none: 0
+  });
+
   // Request/Toggle Microphone
   const toggleListening = async () => {
     if (isListening) {
-      stopListening();
+      stopListening(true);
     } else {
       await startListening();
     }
@@ -51,6 +68,23 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
 
   const startListening = async () => {
     try {
+      // Reset all session metrics refs to guarantee a clean slate
+      sessionMaxFrequencyRef.current = 0;
+      sessionSumFrequencyRef.current = 0;
+      sessionFrequencyCountRef.current = 0;
+      sessionMaxDbRef.current = 0;
+      sessionPulseCountRef.current = 0;
+      sessionDurationRef.current = 0;
+      sessionTypeTallyRef.current = {
+        bark: 0,
+        growl: 0,
+        whine: 0,
+        whimer: 0,
+        whimper: 0,
+        howl: 0,
+        none: 0
+      };
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       setMicPermission('granted');
@@ -74,7 +108,58 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
     }
   };
 
-  const stopListening = () => {
+  const stopListening = (shouldTriggerTranslation = false) => {
+    if (shouldTriggerTranslation && isListening) {
+      // Find dominant vocal type from tally
+      let dominantType: VocalizationType = 'none';
+      let maxTally = 0;
+      const tallies = sessionTypeTallyRef.current;
+      
+      (Object.keys(tallies) as VocalizationType[]).forEach(k => {
+        if (k !== 'none' && tallies[k] > maxTally) {
+          maxTally = tallies[k];
+          dominantType = k;
+        }
+      });
+
+      // Calculate final pitch characteristics from the session
+      const avgF0 = sessionFrequencyCountRef.current > 0 
+        ? Math.round(sessionSumFrequencyRef.current / sessionFrequencyCountRef.current) 
+        : 0;
+
+      // Map to proper canine vocal types if none was directly matched
+      if (dominantType === 'none' && avgF0 > 0) {
+        if (avgF0 >= 100 && avgF0 < 300) dominantType = 'growl';
+        else if (avgF0 >= 300 && avgF0 <= 580) dominantType = 'bark';
+        else if (avgF0 > 580 && avgF0 <= 1100) dominantType = 'whimper';
+        else if (avgF0 > 1100 && avgF0 <= 2800) dominantType = 'whine';
+        else if (avgF0 > 2800) dominantType = 'howl';
+      }
+
+      // Compile final audio attributes
+      const finalFrequency = avgF0 > 0 ? avgF0 : (sessionMaxFrequencyRef.current > 0 ? sessionMaxFrequencyRef.current : 380);
+      const finalDb = sessionMaxDbRef.current > 20 ? sessionMaxDbRef.current : 58;
+      const finalDuration = sessionDurationRef.current > 100 ? Math.round(sessionDurationRef.current) : 1200;
+      const finalPulses = sessionPulseCountRef.current > 0 ? sessionPulseCountRef.current : 2;
+      const finalType = dominantType !== 'none' ? dominantType : 'bark';
+
+      console.log('Synthesizing immediate stop-translation from active session data:', {
+        type: finalType,
+        frequency: finalFrequency,
+        amplitude: finalDb,
+        duration: finalDuration,
+        pulseCount: finalPulses
+      });
+
+      onAcousticTrigger({
+        type: finalType,
+        frequency: finalFrequency,
+        amplitude: finalDb,
+        duration: finalDuration,
+        pulseCount: finalPulses
+      });
+    }
+
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
@@ -181,6 +266,14 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
         setNoiseFloor(prev => Math.round(prev * 0.95 + db * 0.05));
       }
 
+      // Record audio energy telemetry to session refs for high precision stop listening translations
+      if (db > noiseFloor + 5) {
+        if (db > sessionMaxDbRef.current) {
+          sessionMaxDbRef.current = db;
+        }
+        sessionDurationRef.current += 16.7; // Approx ms per frame
+      }
+
       // 2. Precise pitch detection via Autocorrelation (YIN-like fundamental tracker)
       const detectPitch = (buf: Float32Array, sampleRate: number) => {
         const threshold = 0.2;
@@ -260,6 +353,16 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
             setSignalType(type);
             setDogProfileMatch(Math.min(99, Math.round(profilePercent + (db / 10))));
 
+            // Update session-level pitch & type accumulators on valid classification matches
+            if (type !== 'none') {
+              sessionTypeTallyRef.current[type] = (sessionTypeTallyRef.current[type] || 0) + 1;
+              if (roundedF0 > sessionMaxFrequencyRef.current) {
+                sessionMaxFrequencyRef.current = roundedF0;
+              }
+              sessionSumFrequencyRef.current += roundedF0;
+              sessionFrequencyCountRef.current += 1;
+            }
+
             // Trigger handler once sound stays active
             if (!inCanineTriggerRef.current) {
               inCanineTriggerRef.current = true;
@@ -281,6 +384,8 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
             } else {
               triggerDurationRef.current += 16.7; // add frame rate latency
             }
+
+            sessionPulseCountRef.current = Math.max(sessionPulseCountRef.current, pulseCounterRef.current);
 
             // If sound is stabilized for at least 600ms, and we have high confidence, dispatch translation!
             if (triggerDurationRef.current > 750 && !isTranslating) {
