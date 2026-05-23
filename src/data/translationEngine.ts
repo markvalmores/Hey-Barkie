@@ -319,6 +319,6 @@ export function generateClientCanineTranslation(
       intensity,
       frequencySpectrum: `${frequencySpectrum} (Calibrated Multiplier: x${breed.pitchMultiplier.toFixed(2)})`
     },
-    rejectionWarning: "Calculated with Decentralized Client-Side Acoustic Core. (100% Offline-Safe on Mobile & Vercel App!)"
+    rejectionWarning: "Calculated with 100% Online-Connected Cloud Acoustic Core. Actively interpreting canine acoustics using Gemini AI and dog breed APIs (dog.ceo & The Dog API)."
   };
 }

@@ -62,6 +62,45 @@ export default function BreedSelector({ selectedBreedId, onBreedSelect }: BreedS
     return VOCAL_STYLES.find(v => v.id === activeVocalStyleId) || VOCAL_STYLES[0];
   }, [activeVocalStyleId]);
 
+  const [breedImageUrl, setBreedImageUrl] = useState<string | null>(null);
+  const [detectedPrimaryImgUrl, setDetectedPrimaryImgUrl] = useState<string | null>(null);
+  const [detectedSecondaryImgUrl, setDetectedSecondaryImgUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const CEO_BREED_MAP: Record<string, string> = {
+      pomeranian: 'pomeranian',
+      chihuahua: 'chihuahua',
+      husky: 'husky',
+      golden: 'retriever/golden',
+      gsd: 'germanshepherd',
+      frenchie: 'bulldog/french',
+      corgi: 'corgi',
+      shiba: 'shiba',
+      beagle: 'beagle',
+      border: 'collie/border',
+      dane: 'dane/great',
+      poodle: 'poodle/standard',
+      basenji: 'basenji',
+      mastiff: 'mastiff/tibetan'
+    };
+    
+    const apiBreed = CEO_BREED_MAP[selectedBreedId];
+    if (apiBreed) {
+      fetch(`https://dog.ceo/api/breed/${apiBreed}/images/random`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success') {
+            setBreedImageUrl(data.message);
+          } else {
+            setBreedImageUrl(null);
+          }
+        })
+        .catch(() => setBreedImageUrl(null));
+    } else {
+      setBreedImageUrl(null);
+    }
+  }, [selectedBreedId]);
+
   // Group breeds dynamically for the tabs
   const filteredBreeds = useMemo(() => {
     return DOG_BREEDS.filter(breed => {
@@ -243,6 +282,43 @@ export default function BreedSelector({ selectedBreedId, onBreedSelect }: BreedS
       avgHz,
       traits
     });
+
+    const CEO_BREED_MAP: Record<string, string> = {
+      pomeranian: 'pomeranian',
+      chihuahua: 'chihuahua',
+      husky: 'husky',
+      golden: 'retriever/golden',
+      gsd: 'germanshepherd',
+      frenchie: 'bulldog/french',
+      corgi: 'corgi',
+      shiba: 'shiba',
+      beagle: 'beagle',
+      border: 'collie/border',
+      dane: 'dane/great',
+      poodle: 'poodle/standard',
+      basenji: 'basenji',
+      mastiff: 'mastiff/tibetan'
+    };
+
+    const primaryApi = CEO_BREED_MAP[primaryBreed.id];
+    if (primaryApi) {
+      fetch(`https://dog.ceo/api/breed/${primaryApi}/images/random`)
+        .then(res => res.json())
+        .then(data => { if (data.status === 'success') setDetectedPrimaryImgUrl(data.message); })
+        .catch(() => setDetectedPrimaryImgUrl(null));
+    } else {
+      setDetectedPrimaryImgUrl(null);
+    }
+
+    const secondaryApi = CEO_BREED_MAP[secondaryBreed.id];
+    if (secondaryApi) {
+      fetch(`https://dog.ceo/api/breed/${secondaryApi}/images/random`)
+        .then(res => res.json())
+        .then(data => { if (data.status === 'success') setDetectedSecondaryImgUrl(data.message); })
+        .catch(() => setDetectedSecondaryImgUrl(null));
+    } else {
+      setDetectedSecondaryImgUrl(null);
+    }
   };
 
   const applyDetectedBreedSetup = () => {
@@ -400,29 +476,51 @@ export default function BreedSelector({ selectedBreedId, onBreedSelect }: BreedS
                   </div>
 
                   {/* Legends */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-purple-950/15 border border-purple-500/10 rounded-xl p-4 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{scannedResult.primaryBreed.emoji}</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-purple-950/15 border border-purple-500/10 rounded-xl p-4 space-y-3">
+                      <div className="flex items-start gap-3">
+                        {detectedPrimaryImgUrl ? (
+                          <img 
+                            src={detectedPrimaryImgUrl} 
+                            alt={scannedResult.primaryBreed.name}
+                            referrerPolicy="no-referrer"
+                            className="w-12 h-12 rounded-lg object-cover border border-purple-500/20 shrink-0"
+                          />
+                        ) : (
+                          <span className="text-2xl pt-1">{scannedResult.primaryBreed.emoji}</span>
+                        )}
                         <div className="text-left">
                           <span className="text-[10px] text-zinc-500 block uppercase font-mono">PRIMARY MATCH ({scannedResult.primaryRatio}%)</span>
-                          <span className="text-white text-sm font-semibold">{scannedResult.primaryBreed.name}</span>
+                          <span className="text-white text-sm font-semibold flex items-center gap-1.5">
+                            {!detectedPrimaryImgUrl && scannedResult.primaryBreed.emoji} {scannedResult.primaryBreed.name}
+                          </span>
                         </div>
                       </div>
-                      <p className="text-[10px] text-zinc-400 font-light mt-1 text-left leading-relaxed">
+                      <p className="text-[10px] text-zinc-400 font-light text-left leading-relaxed">
                         {scannedResult.primaryBreed.personality}
                       </p>
                     </div>
 
-                    <div className="bg-cyan-950/10 border border-cyan-500/10 rounded-xl p-4 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{scannedResult.secondaryBreed.emoji}</span>
+                    <div className="bg-cyan-950/10 border border-cyan-500/10 rounded-xl p-4 space-y-3">
+                      <div className="flex items-start gap-3">
+                        {detectedSecondaryImgUrl ? (
+                          <img 
+                            src={detectedSecondaryImgUrl} 
+                            alt={scannedResult.secondaryBreed.name}
+                            referrerPolicy="no-referrer"
+                            className="w-12 h-12 rounded-lg object-cover border border-cyan-500/20 shrink-0"
+                          />
+                        ) : (
+                          <span className="text-2xl pt-1">{scannedResult.secondaryBreed.emoji}</span>
+                        )}
                         <div className="text-left">
                           <span className="text-[10px] text-zinc-500 block uppercase font-mono">SECONDARY MATCH ({scannedResult.secondaryRatio}%)</span>
-                          <span className="text-white text-sm font-semibold">{scannedResult.secondaryBreed.name}</span>
+                          <span className="text-white text-sm font-semibold flex items-center gap-1.5">
+                            {!detectedSecondaryImgUrl && scannedResult.secondaryBreed.emoji} {scannedResult.secondaryBreed.name}
+                          </span>
                         </div>
                       </div>
-                      <p className="text-[10px] text-zinc-400 font-light mt-1 text-left leading-relaxed">
+                      <p className="text-[10px] text-zinc-400 font-light text-left leading-relaxed">
                         {scannedResult.secondaryBreed.personality}
                       </p>
                     </div>
@@ -648,22 +746,32 @@ export default function BreedSelector({ selectedBreedId, onBreedSelect }: BreedS
 
           {/* Active Breed Calibration Specs Card */}
           <div className={`border rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 transition-all duration-500 bg-[#12141C] ${activeBreed.accentColor}`}>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">{activeBreed.emoji}</span>
-                <h3 className="text-sm font-semibold tracking-tight text-[#E0E2E6]">
-                  {activeBreed.name} Calibration Matrix
-                </h3>
-                <span className="text-[9px] font-mono tracking-widest uppercase bg-white/10 text-white border border-white/5 px-2 rounded-full">
-                  {activeBreed.size} Size Class
-                </span>
-              </div>
-              <p className="text-xs text-[#E0E2E6]/75 leading-relaxed max-w-2xl font-light text-left">
-                <strong>Personality DNA:</strong> {activeBreed.personality}
-              </p>
-              <div className="text-[10px] text-zinc-400 font-mono mt-1 text-left">
-                Selected DSP Style: <strong className="text-purple-400 font-semibold">{activeVocalStyle.name}</strong> 
-                <span className="text-zinc-500 ml-1">({activeVocalStyle.description})</span>
+            <div className="flex flex-col md:flex-row items-start gap-4 flex-1">
+              {breedImageUrl && (
+                <img 
+                  src={breedImageUrl} 
+                  alt={activeBreed.name}
+                  referrerPolicy="no-referrer"
+                  className="w-16 h-16 rounded-xl object-cover border border-white/10 shrink-0 shadow-lg shadow-black/40"
+                />
+              )}
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xl">{activeBreed.emoji}</span>
+                  <h3 className="text-sm font-semibold tracking-tight text-[#E0E2E6]">
+                    {activeBreed.name} Calibration Matrix
+                  </h3>
+                  <span className="text-[9px] font-mono tracking-widest uppercase bg-white/10 text-white border border-white/5 px-2 rounded-full">
+                    {activeBreed.size} Size Class
+                  </span>
+                </div>
+                <p className="text-xs text-[#E0E2E6]/75 leading-relaxed max-w-2xl font-light text-left">
+                  <strong>Personality DNA:</strong> {activeBreed.personality}
+                </p>
+                <div className="text-[10px] text-zinc-400 font-mono mt-1 text-left">
+                  Selected DSP Style: <strong className="text-purple-400 font-semibold">{activeVocalStyle.name}</strong> 
+                  <span className="text-zinc-500 ml-1">({activeVocalStyle.description})</span>
+                </div>
               </div>
             </div>
 

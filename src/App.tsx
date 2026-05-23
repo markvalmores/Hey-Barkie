@@ -276,6 +276,7 @@ export default function App() {
               isTranslating={isTranslating}
               selectedLanguage={selectedLanguage}
               onLanguageChange={setSelectedLanguage}
+              selectedBreedId={selectedBreedId}
             />
 
             {/* Persistent Historical Run Ledger */}
