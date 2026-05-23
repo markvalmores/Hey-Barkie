@@ -7,6 +7,7 @@ export interface TranslationRequest {
   duration: number;  // Duration of current sound event in ms
   pulseCount: number; // Number of distinct pulses in the pattern
   targetLanguage: 'en' | 'fil';
+  breedId?: string; // Selected dog breed identifier
 }
 
 export interface TranslationResponse {

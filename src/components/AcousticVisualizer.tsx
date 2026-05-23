@@ -11,9 +11,16 @@ interface AcousticVisualizerProps {
     pulseCount: number;
   }) => void;
   isTranslating: boolean;
+  onBreedAutoDetect?: (breedId: string) => void;
+  activeBreedId?: string;
 }
 
-export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }: AcousticVisualizerProps) {
+export default function AcousticVisualizer({ 
+  onAcousticTrigger, 
+  isTranslating, 
+  onBreedAutoDetect,
+  activeBreedId 
+}: AcousticVisualizerProps) {
   const [isListening, setIsListening] = useState(false);
   const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   
@@ -24,6 +31,10 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
   const [dogProfileMatch, setDogProfileMatch] = useState(0);
   const [humanSpeechDetected, setHumanSpeechDetected] = useState(false);
   const [signalType, setSignalType] = useState<VocalizationType>('none');
+  const [detectedBreedId, setDetectedBreedId] = useState<string | null>(null);
+
+  // Consecutive matches for high confidence breed prediction
+  const consecutiveBreedMatchRef = useRef<{ id: string; count: number }>({ id: '', count: 0 });
 
   // Web Audio Nodes
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -353,6 +364,51 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
             setSignalType(type);
             setDogProfileMatch(Math.min(99, Math.round(profilePercent + (db / 10))));
 
+            // Auto breed classifier covering popular, rare, and mysterious brands based on pitch dynamics
+            let predictedId = 'unknown_mix';
+            if (type === 'howl' || type === 'whine') {
+              if (roundedF0 > 1300) predictedId = 'astro_hound';
+              else if (roundedF0 > 850) predictedId = 'chihuahua';
+              else if (roundedF0 > 650) predictedId = 'pomeranian';
+              else if (roundedF0 > 480) predictedId = 'shiba';
+              else if (roundedF0 < 320) predictedId = 'cyber_gsd';
+              else predictedId = 'husky';
+            } else if (type === 'growl') {
+              if (roundedF0 < 125) predictedId = 'mastiff';
+              else if (roundedF0 < 165) predictedId = 'gsd';
+              else if (roundedF0 < 220) predictedId = 'frenchie';
+              else if (roundedF0 > 290) predictedId = 'cereberus';
+              else predictedId = 'anubis';
+            } else if (type === 'whimper') {
+              if (roundedF0 > 820) predictedId = 'basenji';
+              else if (roundedF0 > 580) predictedId = 'poodle';
+              else if (roundedF0 > 420) predictedId = 'aspin';
+              else predictedId = 'unknown_mix';
+            } else { // Standard barks
+              if (roundedF0 > 780) predictedId = 'chihuahua';
+              else if (roundedF0 > 620) predictedId = 'pomeranian';
+              else if (roundedF0 > 520) predictedId = 'corgi';
+              else if (roundedF0 > 450) predictedId = 'shiba';
+              else if (roundedF0 > 390) predictedId = 'beagle';
+              else if (roundedF0 > 330) predictedId = 'border';
+              else if (roundedF0 > 270) predictedId = 'golden';
+              else if (roundedF0 > 200) predictedId = 'dane';
+              else predictedId = 'aspin';
+            }
+
+            // Require 8 consecutive ticks of confirmation to trigger dynamic breed switch
+            if (consecutiveBreedMatchRef.current.id === predictedId) {
+              consecutiveBreedMatchRef.current.count += 1;
+              if (consecutiveBreedMatchRef.current.count === 8) {
+                setDetectedBreedId(predictedId);
+                if (onBreedAutoDetect) {
+                  onBreedAutoDetect(predictedId);
+                }
+              }
+            } else {
+              consecutiveBreedMatchRef.current = { id: predictedId, count: 1 };
+            }
+
             // Update session-level pitch & type accumulators on valid classification matches
             if (type !== 'none') {
               sessionTypeTallyRef.current[type] = (sessionTypeTallyRef.current[type] || 0) + 1;
@@ -519,6 +575,34 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
             ctx.fillText(`[CANINE SIGNAL LOCK: ${signalType.toUpperCase()}]`, 20 * dpr, 25 * dpr);
             ctx.setLineDash([]);
           }
+
+          // Draw real-time rhythmic pulse count counter visually in canvas bounds
+          if (isListening) {
+            ctx.fillStyle = 'rgba(15, 17, 21, 0.85)';
+            ctx.beginPath();
+            ctx.arc(width - 45 * dpr, 30 * dpr, 14 * dpr, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.strokeStyle = '#06b6d4';
+            ctx.lineWidth = 1.5 * dpr;
+            ctx.stroke();
+
+            // Real-time pulse count index
+            ctx.fillStyle = '#22d3ee';
+            ctx.font = `bold ${Math.round(11 * dpr)}px "JetBrains Mono", monospace`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${pulseCounterRef.current || 0}`, width - 45 * dpr, 30 * dpr);
+
+            // Small header descriptor text
+            ctx.textBaseline = 'alphabetic';
+            ctx.textAlign = 'right';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+            ctx.font = `${Math.round(7.5 * dpr)}px "JetBrains Mono", monospace`;
+            ctx.fillText("RHYTHMIC PULSE SURGES:", width - 66 * dpr, 33 * dpr);
+
+            // Restore defaults
+            ctx.textAlign = 'left';
+          }
         }
       }
 
@@ -536,6 +620,116 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
       }
     };
   }, [isListening, noiseFloor, humanSpeechDetected, dogProfileMatch, signalType, isTranslating]);
+
+  // Real-time Canine Bio-frequency Mood Interpreter
+  const computedMoodInfo = React.useMemo(() => {
+    if (!isListening) {
+      return {
+        label: "STANDBY SENSORS",
+        emoji: "💤",
+        color: "text-zinc-500 border-zinc-500/10 bg-zinc-500/5",
+        description: "Acoustic bridge offline. Awaiting dog bio-signals..."
+      };
+    }
+
+    if (humanSpeechDetected) {
+      return {
+        label: "HUMAN INTELLIGENCE BLOCKED",
+        emoji: "🤐",
+        color: "text-red-400 border-red-550/20 bg-red-500/5",
+        description: "Zero human voice recording or transcription permitted. Dog audio stream only!"
+      };
+    }
+
+    if (peakFrequency === 0) {
+      return {
+        label: "LISTENING & ANALYZING",
+        emoji: "📡",
+        color: "text-cyan-400 border-cyan-500/10 bg-cyan-500/5",
+        description: "Calibrating background room audio floor. Speak, howl, growl or bark!"
+      };
+    }
+
+    // Classify mood based on acoustic decibels & pitches
+    if (signalType === 'growl' || (peakFrequency >= 100 && peakFrequency < 300)) {
+      if (dbLevel > 65) {
+        return {
+          label: "Territorial Sentinel Defense Status",
+          emoji: "🛡️",
+          color: "text-red-400 border-red-500/15 bg-gradient-to-r from-red-950/15 to-transparent shadow-[0_0_15px_rgba(239,68,68,0.06)]",
+          description: "Low-frequency rumbles signaling border lockdown posturing or guarding instincts."
+        };
+      } else {
+        return {
+          label: "Playful Tug-of-war Challenge",
+          emoji: "😈",
+          color: "text-amber-400 border-amber-500/15 bg-gradient-to-r from-amber-950/15 to-transparent shadow-[0_0_15px_rgba(245,158,11,0.06)]",
+          description: "Low-tension acoustic growls expressing friendly competitive play drive."
+        };
+      }
+    }
+
+    if (signalType === 'bark' || (peakFrequency >= 300 && peakFrequency <= 580)) {
+      if (dbLevel > 70) {
+        return {
+          label: "Hyper-Ecstatic Zoomie Euphoria",
+          emoji: "🎉",
+          color: "text-emerald-400 border-emerald-500/15 bg-gradient-to-r from-emerald-950/15 to-transparent shadow-[0_0_15px_rgba(16,185,129,0.06)]",
+          description: "High repetitions and steep pressure curves representing intense joyous excitement."
+        };
+      } else {
+        return {
+          label: "Prosocial Interaction / Treat Appeal",
+          emoji: "🍖",
+          color: "text-yellow-400 border-yellow-500/15 bg-gradient-to-r from-yellow-950/15 to-transparent shadow-[0_0_15px_rgba(234,179,8,0.06)]",
+          description: "Standard mid-range greetings demanding interactive attention or delicious rewards."
+        };
+      }
+    }
+
+    if (signalType === 'whimper' || (peakFrequency > 580 && peakFrequency <= 1100)) {
+      if (dbLevel > 56) {
+        return {
+          label: "Separation Sentiment / Cuddle Appeal",
+          emoji: "🥺",
+          color: "text-pink-400 border-pink-500/15 bg-gradient-to-r from-pink-950/15 to-transparent shadow-[0_0_15px_rgba(244,114,182,0.06)]",
+          description: "Gentle high-pitched whimpering signaling attachment appeal or longing for warmth."
+        };
+      } else {
+        return {
+          label: "Sub-harmonic REM Dream Processing",
+          emoji: "🌙",
+          color: "text-indigo-400 border-indigo-500/15 bg-gradient-to-r from-indigo-950/15 to-transparent shadow-[0_0_15px_rgba(99,102,241,0.06)]",
+          description: "Resting brainwave impulses manifesting as sleeping squeaks during happy dreams."
+        };
+      }
+    }
+
+    if (signalType === 'whine' || (peakFrequency > 1100 && peakFrequency <= 2800)) {
+      return {
+        label: "Anticipatory Action Singularity",
+        emoji: "🎒",
+        color: "text-cyan-400 border-cyan-500/15 bg-gradient-to-r from-cyan-950/15 to-transparent shadow-[0_0_15px_rgba(6,182,212,0.06)]",
+        description: "Intense high frequency motivation to begin walks, open locked doors, or share active spaces."
+      };
+    }
+
+    if (signalType === 'howl' || peakFrequency > 2800) {
+      return {
+        label: "Dramatic Ancestral Wolf Anthem",
+        emoji: "🌌",
+        color: "text-purple-400 border-purple-500/15 bg-gradient-to-r from-purple-950/15 to-transparent shadow-[0_0_15px_rgba(168,85,247,0.06)]",
+        description: "Continuous harmonic peak response singing to ambulances, music, or calling out to distant packs."
+      };
+    }
+
+    return {
+      label: "Parsing Vocal Bio-Spectrum",
+      emoji: "🐕",
+      color: "text-cyan-400 border-cyan-500/15 bg-cyan-500/5",
+      description: "Deciphering real-time frequency soundwave nodes..."
+    };
+  }, [isListening, peakFrequency, dbLevel, signalType, humanSpeechDetected]);
 
   return (
     <div id="acoustic-visualizer-card" className="bg-[#0F1115] border border-white/10 rounded-3xl p-8 relative overflow-hidden transition-all duration-300">
@@ -599,11 +793,87 @@ export default function AcousticVisualizer({ onAcousticTrigger, isTranslating }:
         )}
 
         {/* Live trigger indicators inside the camera screen */}
+        {isListening && (
+          <div className="absolute top-4 left-4 bg-black/85 border border-white/10 rounded-2xl p-4 font-mono text-[10px] space-y-1.5 select-none text-left backdrop-blur-md max-w-[210px] sm:max-w-xs shadow-xl min-w-[170px]">
+            <div className="flex items-center gap-1.5 text-[8px] tracking-wider text-cyan-400 font-bold">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span>SENSORS: DOGS ONLY</span>
+            </div>
+            {detectedBreedId ? (
+              <div className="text-emerald-400 text-[11px] font-bold leading-tight">
+                🧬 AUTO-BREED: 
+                <span className="block text-white uppercase mt-0.5 tracking-wide text-xs">
+                  {detectedBreedId === 'gsd' ? 'German Shepherd' : 
+                   detectedBreedId === 'frenchie' ? 'French Bulldog' : 
+                   detectedBreedId === 'golden' ? 'Golden Retriever' : 
+                   detectedBreedId === 'husky' ? 'Siberian Husky' : 
+                   detectedBreedId === 'pomeranian' ? 'Pomeranian' : 
+                   detectedBreedId === 'corgi' ? 'Welsh Corgi' : 
+                   detectedBreedId === 'chihuahua' ? 'Chihuahua' : 
+                   detectedBreedId === 'shiba' ? 'Shiba Inu' : 
+                   detectedBreedId === 'beagle' ? 'Beagle' : 
+                   detectedBreedId === 'border' ? 'Border Collie' : 
+                   detectedBreedId === 'dane' ? 'Great Dane' : 
+                   detectedBreedId === 'poodle' ? 'Standard Poodle' : 
+                   detectedBreedId === 'basenji' ? 'Basenji' : 
+                   detectedBreedId === 'mastiff' ? 'Tibetan Mastiff' : 
+                   detectedBreedId === 'aspin' ? 'Aspin / Street-Smart Mix' : 
+                   detectedBreedId === 'unknown_mix' ? 'Mysterious Mix' : 
+                   detectedBreedId === 'anubis' ? 'Anubis Sphinx Guard' : 
+                   detectedBreedId === 'astro_hound' ? 'Astro-Hound (Cosmic)' : 
+                   detectedBreedId === 'cyber_gsd' ? 'Cybernetic Neo-GSD' : 
+                   detectedBreedId === 'cereberus' ? 'Cerberus Pup' : 
+                   detectedBreedId}
+                </span>
+              </div>
+            ) : (
+              <div className="text-zinc-500 italic">Listening for dog...</div>
+            )}
+            <div className="text-[8px] text-red-400 font-semibold border-t border-white/5 pt-1 mt-1">
+              *REJECTING HUMAN VOICES
+            </div>
+          </div>
+        )}
+
         {isListening && inCanineTriggerRef.current && (
           <div className="absolute top-4 right-4 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-3.5 py-1.5 rounded-full text-[9px] tracking-[0.2em] font-mono animate-pulse flex items-center gap-2 uppercase select-none">
             <Zap className="w-3" /> Target Locked
           </div>
         )}
+      </div>
+
+      {/* Real-time Frequency-to-Mood Bioacoustic Decoder Board */}
+      <div className={`border rounded-2xl p-5 mb-8 relative overflow-hidden transition-all duration-500 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 border-white/5 bg-[#12141D] ${computedMoodInfo.color}`}>
+        <div className="space-y-1.5 z-10 text-left">
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl animate-bounce">{computedMoodInfo.emoji}</span>
+            <div className="flex flex-col">
+              <span className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 font-bold">
+                REAL-TIME FREQUENCY MOOD SCANNER
+              </span>
+              <h3 className="text-sm font-bold tracking-tight text-white uppercase sm:text-base mt-0.5">
+                {computedMoodInfo.label}
+              </h3>
+            </div>
+          </div>
+          <p className="text-xs text-[#E0E2E6]/75 leading-relaxed max-w-2xl font-light">
+            {computedMoodInfo.description}
+          </p>
+        </div>
+
+        {/* Neural Sync Graphics in mini layout */}
+        <div className="shrink-0 flex items-center gap-4 border-t md:border-t-0 md:border-l border-white/5 pt-4 md:pt-0 md:pl-6 w-full md:w-auto font-mono select-none">
+          <div className="w-full md:w-auto flex flex-col items-center md:items-start text-left">
+            <span className="text-[9px] uppercase text-[#E0E2E6]/40 block mb-1 font-sans">SPECTRUM WAVE</span>
+            <div className="flex items-end gap-1.5 h-7">
+              <span className={`w-1 rounded-sm bg-gradient-to-t from-cyan-500 to-purple-500 transition-all duration-300 ${isListening ? 'h-5 animate-pulse' : 'h-1'}`} />
+              <span className={`w-1 rounded-sm bg-gradient-to-t from-cyan-400 to-purple-400 transition-all duration-300 delay-100 ${isListening ? 'h-7 animate-pulse' : 'h-1'}`} />
+              <span className={`w-1 rounded-sm bg-gradient-to-t from-cyan-500 to-purple-500 transition-all duration-300 delay-200 ${isListening ? 'h-4 animate-pulse' : 'h-1'}`} />
+              <span className={`w-1 rounded-sm bg-gradient-to-t from-cyan-300 to-purple-300 transition-all duration-300 delay-300 ${isListening ? 'h-6 animate-pulse' : 'h-1'}`} />
+              <span className={`w-1 rounded-sm bg-gradient-to-t from-cyan-400 to-purple-400 transition-all duration-300 delay-400 ${isListening ? 'h-3 animate-pulse' : 'h-1'}`} />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Grid statistics overlay */}

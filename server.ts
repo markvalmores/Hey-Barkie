@@ -3,6 +3,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
+import { generateClientCanineTranslation } from './src/data/translationEngine';
 
 dotenv.config();
 
@@ -29,96 +30,20 @@ const ai = isGeminiEnabled
 // Local High-Fidelity Rule-Based Fallback Generator
 // This kicks in if the Gemini API key is not configured, or if the API call fails.
 function generateLocalCanineTranslation(
-  type: string,
+  type: any,
   frequency: number,
   amplitude: number,
   duration: number,
-  pulseCount: number
+  pulseCount: number,
+  breedId?: string
 ) {
-  const intensity = amplitude > 70 ? 'High' : amplitude > 40 ? 'Medium' : 'Low';
-  
-  let emotion = 'Amiable Social Contact';
-  let enTrans = 'Hey there! I am happy to see you. Let’s play!';
-  let filTrans = 'Hoy! Masaya akong makita ka. Laro tayo!';
-  let analysis = 'Moderate pitching with positive frequency modulation indicates active greeting and social solicitation.';
-  let confidence = 85;
-
-  if (type === 'bark') {
-    if (frequency > 450) {
-      if (pulseCount > 3) {
-        emotion = 'High-Excitement Play Invitation';
-        enTrans = 'Hurry up! Throw the ball! Let’s run around, this is so fun!';
-        filTrans = 'Bilis! Itapon mo yung bola! Takbo tayo sa paligid, ang saya nito!';
-        analysis = `Vocalizing at ${Math.round(frequency)} Hz with rapid high-frequency repetition indicates a state of high physical arousal and positive play anticipation.`;
-        confidence = 92;
-      } else {
-        emotion = 'Curious Questioning / Greeting';
-        enTrans = 'Who are you? Are we friends? I like you!';
-        filTrans = 'Sino ka? Magkaibigan ba tayo? Gusto kita!';
-        analysis = `Sparsely spaced pulses around ${Math.round(frequency)} Hz signify initial assessment and standard social inquiry.`;
-        confidence = 88;
-      }
-    } else {
-      // Lower frequency barks
-      if (intensity === 'High') {
-        emotion = 'Territorial / Defensive Greeting';
-        enTrans = 'Attention! Someone is approaching our space. Stay alerts!';
-        filTrans = 'Atensyon! May lumalapit sa teritoryo natin. Mag-ingat!';
-        analysis = `Low-pitch bark (${Math.round(frequency)} Hz) with high decibel energy shows protective guardianship and immediate warning posturing.`;
-        confidence = 90;
-      } else {
-        emotion = 'Comfort Seeking / Request';
-        enTrans = 'Hey, look at me! I’m here. Can you pay attention to me?';
-        filTrans = 'Huy, tingnan mo ako! Nandito ako. Pwede mo ba akong pansinin?';
-        analysis = `Evenly spaced low-to-mid pitches (${Math.round(frequency)} Hz) represent moderate attention-seeking behavior.`;
-        confidence = 84;
-      }
-    }
-  } else if (type === 'growl') {
-    emotion = 'Boundary Setting / Defense';
-    enTrans = 'I’m feeling uncomfortable right now. Please give me some space.';
-    filTrans = 'Hindi ako komportable ngayon. Bigyan mo muna ako ng espasyo.';
-    analysis = `Low vibration frequency (${Math.round(frequency)} Hz) with sustained amplitude represents classical acoustic defensive behavior.`;
-    confidence = 94;
-  } else if (type === 'whine') {
-    emotion = 'Eager Attachment / Anticipation';
-    enTrans = 'Oh please, please let me have that! Or take me outside!';
-    filTrans = 'Sige na, pakiusap ibigay mo na sa akin yan! O kaya labas tayo!';
-    analysis = `Sustained high-register sound wave at ${Math.round(frequency)} Hz indicates urgent internal desire or separation anxiety.`;
-    confidence = 89;
-  } else if (type === 'howl') {
-    emotion = 'Acoustic Communal Bonding';
-    enTrans = 'Awoooo! I’m calling out to my pack! Where are you guys singing?';
-    filTrans = 'Awoooo! Tinatawag ko ang pangkat ko! Nasaan ba kayo?';
-    analysis = `Harmonic, high-intensity sound sustained over ${duration} ms is designed to travel long distances for group identification.`;
-    confidence = 95;
-  } else if (type === 'whimper') {
-    emotion = 'Vulnerability / Submissive Appeal';
-    enTrans = 'I’m a bit scared, can you hold me close and protect me?';
-    filTrans = 'Medyo natatakot ako, pwede mo ba akong yakapin at protektahan?';
-    analysis = `Low-amplitude, high-pitch whining under ${Math.round(frequency)} Hz highlights mild submissive distress or search for maternal protection.`;
-    confidence = 91;
-  }
-
-  return {
-    emotion,
-    acousticAnalysis: analysis,
-    englishTranslation: enTrans,
-    filipinoTranslation: filTrans,
-    confidence,
-    isSuccess: true,
-    canineDetails: {
-      intensity,
-      frequencySpectrum: frequency > 600 ? 'High-Register (Canine Whine/Alert)' : frequency > 350 ? 'Medium-Register (Social Barking)' : 'Low-Register (Growl/Warning Bark)'
-    },
-    rejectionWarning: isGeminiEnabled ? undefined : "Operating in Local Autonomic Bioacoustic Mode. Setup your Gemini API Key in 'Settings > Secrets' for live AI analysis!"
-  };
+  return generateClientCanineTranslation(type, frequency, amplitude, duration, pulseCount, breedId);
 }
 
 // API endpoint to translate canine acoustics
 app.post('/api/translate', async (req, res) => {
   try {
-    const { type, frequency, amplitude, duration, pulseCount } = req.body;
+    const { type, frequency, amplitude, duration, pulseCount, breedId } = req.body;
 
     // Validate request parameters
     const safeType = (type || 'bark').toLowerCase();
@@ -129,11 +54,36 @@ app.post('/api/translate', async (req, res) => {
 
     if (!isGeminiEnabled || !ai) {
       // Fallback to local high-fidelity bioacoustics translator
-      const fallbackResult = generateLocalCanineTranslation(safeType, safeFrequency, safeAmplitude, safeDuration, safePulseCount);
+      const fallbackResult = generateLocalCanineTranslation(safeType, safeFrequency, safeAmplitude, safeDuration, safePulseCount, breedId);
       return res.json(fallbackResult);
     }
 
-    // Call Gemini for accurate translation based on frequency vibration and bioacoustic signals
+    // Lookup breed info for passing key context to Gemini for customized personality translation!
+    const SERVER_BREEDS: Record<string, { name: string; size: string; personality: string }> = {
+      pomeranian: { name: 'Pomeranian (Pombon)', size: 'Toy', personality: 'Spirited, intelligent, vocal, fluffy, and energetic.' },
+      chihuahua: { name: 'Chihuahua', size: 'Toy', personality: 'Sassy, alert, feisty, devoted, but highly nervous & alert, trembling with sass.' },
+      husky: { name: 'Siberian Husky', size: 'Large', personality: 'Highly dramatic storyteller, mischievous, very vocal, loves to howl complain.' },
+      golden: { name: 'Golden Retriever', size: 'Large', personality: 'Gentle, food-motivated helper, pure happy playboy, treats obsessed.' },
+      gsd: { name: 'German Shepherd', size: 'Large', personality: 'Security-focused officer, serious, loyal family guardian on alert patrol.' },
+      frenchie: { name: 'French Bulldog', size: 'Small', personality: 'Chilled out lazy potato, prone to grunting snorts, adorable but stubborn.' },
+      corgi: { name: 'Welsh Corgi', size: 'Small', personality: 'Bossy herder, energetic, highly food-seeking, attention-demanding royal pet.' },
+      shiba: { name: 'Shiba Inu', size: 'Small', personality: 'Dignified independent doge, classic high-pitched drama queen screams, elegant.' },
+      beagle: { name: 'Beagle', size: 'Small', personality: 'Scent-obsessed tracking scout, merry but stubborn, speaks with baying barks.' },
+      border: { name: 'Border Collie', size: 'Medium', personality: 'Workaholic genius, intensely focused herds everything, loves solving puzzles.' },
+      dane: { name: 'Great Dane', size: 'Giant', personality: 'Gentle giant, sweet couch potato, thinks they are toy-sized, deep subharmonic booms.' },
+      poodle: { name: 'Standard Poodle', size: 'Medium', personality: 'Extraordinarily proud, classy, athletic scholar, loves sophisticated games.' },
+      basenji: { name: 'Basenji', size: 'Small', personality: 'The barkless African wonder, washes like a cat, expresses thoughts in playful yodels.' },
+      mastiff: { name: 'Tibetan Mastiff', size: 'Giant', personality: 'Ancient king guardian, majestic lion coat, deep chest infrasonic growling.' },
+      aspin: { name: 'Aspin / Street-Smart Mix', size: 'Medium', personality: 'Incredibly resilient Philippine street champion, highly intelligent and survivalist.' },
+      unknown_mix: { name: 'Unknown Mysterious Mix', size: 'Medium', personality: 'Universal companion dog, delightful hybrid of everything, super adaptable.' },
+      anubis: { name: 'Anubis Sphinx Guard', size: 'Large', personality: 'Immortal Egyptian pharaoh guardian, mystical ancient cosmic authority.' },
+      astro_hound: { name: 'Astro-Hound', size: 'Medium', personality: 'Zero-gravity space explorer barking in radio waves and cosmic stardust sparkles.' },
+      cyber_gsd: { name: 'Cybernetic Neo-GSD', size: 'Large', personality: 'Synthetically augmented robotic defense canine, processing with microchip logic.' },
+      cereberus: { name: 'Cerberus Baby Pup', size: 'Medium', personality: 'Three-headed mythic puppy of fire, three brains sharing pure playful chaos.' }
+    };
+    const currentBreed = SERVER_BREEDS[breedId || 'pomeranian'] || SERVER_BREEDS['pomeranian'];
+
+    // Call Gemini for accurate translation based on frequency vibration, bioacoustic signals and breed traits
     const prompt = `
       You are an expert canine behavioral ethologist and bioacoustics scientist.
       Translate the following real-time dog acoustic signal parameter analysis to human language:
@@ -142,16 +92,25 @@ app.post('/api/translate', async (req, res) => {
       - Decibel Amplitude State: ${safeAmplitude} dB (approximate volume)
       - Sustained Signal Duration: ${safeDuration} ms
       - Acoustic Pulse Rhythm: ${safePulseCount} discrete pulse(s) in rapid sequence
-
+      
+      CANINE BREED CONTEXT:
+      - Selected Breed: ${currentBreed.name}
+      - Breed Size & Calibrations: ${currentBreed.size}
+      - Breed Personality DNA: ${currentBreed.personality}
+ 
       CANINE BIOACOUSTICAL SCIENCE GUIDELINES:
       - Squeaks & Whines (>600Hz): Generally indicate distress, anticipation, submission, or intense excitement.
       - Social / Play Barks (400Hz - 550Hz): Modulate rapidly, are high frequency variation, and have high-pitched play solicitation elements.
       - Alarm / Warning Barks (300Hz - 425Hz): Often sharp, highly recurring pulses with solid frequency coherence.
       - Growls & Threats (<300Hz): Focus on territorial defense, boundary setting, or fear-based aggression.
       - Duration & Cadence: Shorter, repeating intervals signify alert or play. Long, drawn-out barks or growls represent deeper emotional commitment and defensive posturing.
+      - Breed Behavior Shifts: Custom-tune the vocal thoughts to match the exact breed persona (e.g., Huskies are incredibly dramatic and complain/howl hilariously, Chihuahuas are cute and nervous, Golden Retrievers are pure love and food-focused, German Shepherds speak with military-grade duty and perimeter safety).
+
+      IMPORTANT FOR NON-REPETITION:
+      To prevent robotic response patterns, NEVER repeat identical translation text across turns. Generate fresh, varied, and cute conversational dialogue. Keep the translations playful, extremely natural, and expressive.
 
       Translate it with high precision into BOTH conversational, highly accurate English (human thought equivalent) AND Filipino/Tagalog translation (natural, expressive, captures typical Filipino dog owner dialects or colloquial tones gracefully, preserving canine emotion!).
-
+ 
       Always return a JSON object that models the canine's exact emotional mindset.
     `;
 
@@ -160,7 +119,7 @@ app.post('/api/translate', async (req, res) => {
         model: 'gemini-3.5-flash',
         contents: prompt,
         config: {
-          systemInstruction: 'You are BarkDecoder AI, a canine vocology intelligence. Analyze canine frequency acoustics and parse their specific emotional and semantic messages to human text. Respond ONLY in valid JSON.',
+          systemInstruction: 'You are BarkDecoder AI, a canine vocology intelligence. Analyze canine frequency acoustics in relation to their specific breed profile (e.g. dramatic complainers like Huskies, sassy guard duty for Chihuahuas, gentle foodie vibes for Goldens) and parse their specific emotional and semantic messages to human text. Never translate or transcribe human vocalizations under any circumstance; process only CANINE sounds. Respond ONLY in valid JSON.',
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
@@ -205,11 +164,11 @@ app.post('/api/translate', async (req, res) => {
         const parsed = JSON.parse(responseText.trim());
         return res.json(parsed);
       } else {
-        throw new Error('Emply response from Gemini API');
+        throw new Error('Empty response from Gemini API');
       }
     } catch (apiError) {
       console.error('Gemini translation error, using fallback:', apiError);
-      const fallbackResult = generateLocalCanineTranslation(safeType, safeFrequency, safeAmplitude, safeDuration, safePulseCount);
+      const fallbackResult = generateLocalCanineTranslation(safeType, safeFrequency, safeAmplitude, safeDuration, safePulseCount, breedId);
       return res.json({
         ...fallbackResult,
         rejectionWarning: "Encountered a temporary Gemini API handshake latency. Seamlessly loaded local bioacoustic core translations."
